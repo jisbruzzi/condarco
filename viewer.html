@@ -37,6 +37,53 @@
       z-index: 20;
     }
 
+    /* Mira central: marca el punto que usa el modo eliminar vértices. */
+    #crosshair {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 22px;
+      height: 22px;
+      margin: -11px 0 0 -11px;
+      pointer-events: none;
+      z-index: 25;
+      display: none;
+    }
+    #crosshair::before,
+    #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 43, 214, 0.9);
+    }
+    #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; margin-left: -1px; }
+    #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; margin-top: -1px; }
+    #crosshair.on { display: block; }
+
+    /* Barra superior del modo eliminar vértices (Ctrl+D). Clic = copiar lista. */
+    #deletebar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 92vw;
+      padding: 10px 16px;
+      background: rgba(32, 0, 26, 0.82);
+      border: 1px solid rgba(255, 43, 214, 0.6);
+      border-radius: 10px;
+      color: #ffd9f4;
+      font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: center;
+      white-space: pre-line;
+      cursor: pointer;
+      z-index: 50;
+      display: none;
+    }
+    #deletebar.on { display: block; }
+    #deletebar .title { color: #ff2bd6; font-weight: 700; letter-spacing: 0.04em; }
+    #deletebar .v { color: #ffffff; }
+    #deletebar .dim { color: #e8a9dc; }
+    #deletebar .ok { color: #7dffb0; }
+
     #overlay {
       position: fixed;
       inset: 0;
@@ -71,15 +118,26 @@
   <div id="app"></div>
 
   <div id="help">
-    <b>WASD</b> moverse &nbsp;·&nbsp; <b>Mouse</b> mirar &nbsp;·&nbsp; <b>Shift</b> correr &nbsp;·&nbsp; <b>Esc</b> liberar cursor
+    <b>WASD</b> moverse &nbsp;·&nbsp; <b>Mouse</b> mirar &nbsp;·&nbsp; <b>Shift</b> correr &nbsp;·&nbsp; <b>Esc</b> liberar cursor<br />
+    <b>Ctrl+D</b> eliminar vértices &nbsp;·&nbsp; <b>Ctrl+Z</b> deshacer &nbsp;·&nbsp; <b>Ctrl+C</b> copiar lista
   </div>
 
   <div id="hud"></div>
+  <div id="crosshair"></div>
+
+  <div id="deletebar">
+    <div class="title">MODO ELIMINAR VÉRTICES · Ctrl+D para salir</div>
+    <div>Vértice más cercano al centro: <span class="v" id="vinfo">—</span></div>
+    <div class="dim">coords = OBJ (x este · y norte · z alto), metros</div>
+    <div class="dim">Clic izq. elimina · Ctrl+Z deshace · Ctrl+C (o clic aquí) copia la lista</div>
+    <div class="dim">Eliminados: <span id="dcount">0</span> &nbsp;<span class="ok" id="dstatus"></span></div>
+  </div>
 
   <div id="overlay">
     <h1>Recorrido de la casa</h1>
     <p id="loading">Cargando floorplan.obj…</p>
     <p>WASD para caminar, mouse para mirar.</p>
+    <p style="font-size:12px">Ctrl+D activa la herramienta para eliminar vértices del modelo.</p>
     <div class="btn" id="startBtn">Haz clic para entrar</div>
   </div>
 
@@ -94,7 +152,6 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
     const EYE_HEIGHT = 1.55;
@@ -111,6 +168,11 @@
     const overlay = document.getElementById('overlay');
     const loadingEl = document.getElementById('loading');
     const startBtn = document.getElementById('startBtn');
+    const crosshair = document.getElementById('crosshair');
+    const deletebar = document.getElementById('deletebar');
+    const vinfo = document.getElementById('vinfo');
+    const dcount = document.getElementById('dcount');
+    const dstatus = document.getElementById('dstatus');
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -131,8 +193,40 @@
 
     const controls = new PointerLockControls(camera, renderer.domElement);
 
+    // ---------------------------------------------------------------------
+    // Estado y utilidades de la herramienta "eliminar vértices" (Ctrl+D).
+    // ---------------------------------------------------------------------
+    let model = null;          // { vertices: [[x,y,z], ...], sections: [{ name, faces: [[i,...]] }] }
+    let modelGroup = null;     // Group con una malla por sección 'o' del OBJ
+    let floorMaterial, wallMaterial, blockMaterial;
+
+    const deleteTool = {
+      active: false,
+      deleted: [],                 // índices (0-based) de vértices OBJ eliminados, en orden
+      highlight: -1,               // índice del vértice más cercano al centro de pantalla
+      highlightWorld: new THREE.Vector3(),
+      lastShownIndex: -2,
+      toast: 0
+    };
+
+    // Marcador del vértice resaltado. depthTest:false para verlo aunque
+    // quede dentro de una pared.
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xff2bd6, depthTest: false, transparent: true, opacity: 0.95 })
+    );
+    marker.renderOrder = 999;
+    marker.visible = false;
+    scene.add(marker);
+
     const keys = Object.create(null);
     document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.code === 'KeyD') { e.preventDefault(); toggleDeleteTool(); }
+        else if (e.code === 'KeyZ') { e.preventDefault(); undoDelete(); }
+        else if (e.code === 'KeyC') { e.preventDefault(); copyDeleteList(); }
+        return; // no tratar como tecla de movimiento
+      }
       keys[e.code] = true;
       if (e.code === 'Space') e.preventDefault();
     });
@@ -143,6 +237,20 @@
     controls.addEventListener('lock', () => overlay.classList.add('hidden'));
     controls.addEventListener('unlock', () => overlay.classList.remove('hidden'));
 
+    // La barra del modo vive por encima del overlay (z-index mayor) y no
+    // propaga el clic, así que al liberar el cursor se puede copiar la lista
+    // sin volver a bloquear el puntero.
+    deletebar.addEventListener('mousedown', (e) => e.stopPropagation());
+    deletebar.addEventListener('click', (e) => { e.stopPropagation(); copyDeleteList(); });
+
+    // Clic izquierdo bloqueado = eliminar el vértice resaltado.
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (deleteTool.active && controls.isLocked && e.button === 0) {
+        e.preventDefault();
+        deleteCurrentVertex();
+      }
+    });
+
     camera.position.set(0, EYE_HEIGHT, 0);
 
     const floorTexture = new THREE.TextureLoader().load('floor_texture.jpg');
@@ -150,57 +258,259 @@
     floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
     floorTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    const loader = new OBJLoader();
-    loader.load(
-      'floorplan.obj',
-      (obj) => {
-        const mesh = obj;
-        // El modelo está en Z-up (Z = altura). Se rota a Y-up para Three.js.
-        mesh.rotation.x = -Math.PI / 2;
+    floorMaterial = new THREE.MeshStandardMaterial({
+      map: floorTexture, roughness: 1.0, metalness: 0.0, side: THREE.DoubleSide
+    });
+    wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide
+    });
+    blockMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcfd6e2, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide
+    });
 
-        const whiteMaterial = () => new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          roughness: 0.95,
-          metalness: 0.0,
-          side: THREE.DoubleSide
-        });
+    function materialFor(name) {
+      if (name === 'floor') return floorMaterial;
+      if (name === 'walls' || name === 'ceilings') return wallMaterial;
+      return blockMaterial;
+    }
 
-        mesh.traverse((child) => {
-          if (!child.isMesh) return;
-
-          // El OBJ no trae normales; sin ellas las caras quedan planas/negras.
-          child.geometry.computeVertexNormals();
-
-          if (child.name === 'floor') {
-            // Proyección planar del suelo (plano x/y del OBJ) en metros -> UV.
-            const pos = child.geometry.attributes.position;
-            const uv = new Float32Array(pos.count * 2);
-            for (let i = 0; i < pos.count; i++) {
-              uv[2 * i] = pos.getX(i) / FLOOR_TILE;
-              uv[2 * i + 1] = pos.getY(i) / FLOOR_TILE;
-            }
-            child.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-            child.material = new THREE.MeshStandardMaterial({
-              map: floorTexture,
-              roughness: 1.0,
-              metalness: 0.0,
-              side: THREE.DoubleSide
-            });
-          } else if (child.name === 'walls' || child.name === 'ceilings') {
-            child.material = whiteMaterial();
-          } else {
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0xcfd6e2,
-              roughness: 0.9,
-              metalness: 0.0,
-              side: THREE.DoubleSide
-            });
+    // Parser OBJ mínimo: conserva la lista real de vértices del archivo y las
+    // caras por sección ('o'), con índices 0-based sobre esa lista. Así el
+    // "vértice #N" que muestra la herramienta coincide con la línea `v` N del
+    // archivo floorplan.obj.
+    function parseOBJ(text) {
+      const vertices = [];
+      const sections = [];
+      let section = null;
+      const lines = text.split('\n');
+      for (let li = 0; li < lines.length; li++) {
+        const line = lines[li].trim();
+        if (!line || line[0] === '#') continue;
+        const sp = line.split(/\s+/);
+        const tag = sp[0];
+        if (tag === 'v') {
+          vertices.push([+sp[1], +sp[2], +sp[3]]);
+        } else if (tag === 'o' || tag === 'g') {
+          section = { name: sp.slice(1).join(' ') || 'object', faces: [] };
+          sections.push(section);
+        } else if (tag === 'f') {
+          if (!section) { section = { name: 'object', faces: [] }; sections.push(section); }
+          const face = [];
+          for (let i = 1; i < sp.length; i++) {
+            let vi = parseInt(sp[i].split('/')[0], 10);
+            if (vi < 0) vi = vertices.length + vi; else vi -= 1;
+            face.push(vi);
           }
-        });
+          section.faces.push(face);
+        }
+      }
+      return { vertices, sections };
+    }
 
-        scene.add(mesh);
+    // Reconstruye la malla desde cero omitiendo toda cara que use un vértice
+    // eliminado. El modelo es chico (864 verts), así que reconstruir es barato.
+    function buildModel() {
+      if (modelGroup) {
+        scene.remove(modelGroup);
+        modelGroup.traverse((c) => { if (c.isMesh) c.geometry.dispose(); });
+      }
+      modelGroup = new THREE.Group();
+      modelGroup.rotation.x = -Math.PI / 2; // OBJ Z-up -> Three.js Y-up
 
-        const box = new THREE.Box3().setFromObject(mesh);
+      const deletedSet = new Set(deleteTool.deleted);
+      for (const section of model.sections) {
+        const positions = [];
+        const uvs = [];
+        for (const face of section.faces) {
+          let skip = false;
+          for (const i of face) { if (deletedSet.has(i)) { skip = true; break; } }
+          if (skip) continue;
+          for (let k = 1; k < face.length - 1; k++) { // triangulación en abanico
+            const tri = [face[0], face[k], face[k + 1]];
+            for (const i of tri) {
+              const v = model.vertices[i];
+              positions.push(v[0], v[1], v[2]);
+              if (section.name === 'floor') uvs.push(v[0] / FLOOR_TILE, v[1] / FLOOR_TILE);
+            }
+          }
+        }
+        if (!positions.length) continue;
+
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        if (section.name === 'floor') g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        g.computeVertexNormals(); // caras planas correctamente iluminadas
+        const mesh = new THREE.Mesh(g, materialFor(section.name));
+        mesh.name = section.name;
+        modelGroup.add(mesh);
+      }
+      scene.add(modelGroup);
+      modelGroup.updateMatrixWorld(true);
+    }
+
+    // Vértices aún usados por alguna cara viva (los demás ya no se pueden tocar).
+    function referencedVertices() {
+      const deletedSet = new Set(deleteTool.deleted);
+      const used = new Set();
+      for (const section of model.sections) {
+        for (const face of section.faces) {
+          let skip = false;
+          for (const i of face) { if (deletedSet.has(i)) { skip = true; break; } }
+          if (skip) continue;
+          for (const i of face) used.add(i);
+        }
+      }
+      return used;
+    }
+
+    const _w = new THREE.Vector3();
+    const _c = new THREE.Vector3();
+    const _p = new THREE.Vector3();
+
+    // Busca el vértice más cercano al centro de la pantalla (dentro del frustum).
+    function updateHighlight() {
+      if (!deleteTool.active || !modelGroup) {
+        marker.visible = false;
+        deleteTool.highlight = -1;
+        return;
+      }
+      camera.updateMatrixWorld();
+      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+
+      let best = -1;
+      let bestScore = Infinity;
+      const used = referencedVertices();
+      for (const i of used) {
+        const o = model.vertices[i];
+        _w.set(o[0], o[1], o[2]).applyMatrix4(modelGroup.matrixWorld);
+        _c.copy(_w).applyMatrix4(camera.matrixWorldInverse);
+        if (_c.z > -0.05) continue;               // detrás de la cámara
+        _p.copy(_w).project(camera);
+        if (_p.x < -1 || _p.x > 1 || _p.y < -1 || _p.y > 1) continue; // fuera de pantalla
+        const score = _p.x * _p.x + _p.y * _p.y;  // distancia² al centro (0,0)
+        if (score < bestScore) {
+          bestScore = score;
+          best = i;
+          deleteTool.highlightWorld.copy(_w);
+        }
+      }
+
+      deleteTool.highlight = best;
+      if (best >= 0) {
+        marker.position.copy(deleteTool.highlightWorld);
+        marker.visible = true;
+      } else {
+        marker.visible = false;
+      }
+      updateVertexInfo(best);
+    }
+
+    function updateVertexInfo(i) {
+      if (i === deleteTool.lastShownIndex) return;
+      deleteTool.lastShownIndex = i;
+      if (i < 0) { vinfo.textContent = '— (ninguno a la vista)'; return; }
+      const v = model.vertices[i];
+      vinfo.textContent = '#' + (i + 1) + '  obj(' +
+        v[0].toFixed(3) + ', ' + v[1].toFixed(3) + ', ' + v[2].toFixed(3) + ')';
+    }
+
+    function deleteCurrentVertex() {
+      const i = deleteTool.highlight;
+      if (i < 0) return;
+      deleteTool.deleted.push(i);
+      deleteTool.lastShownIndex = -2;
+      buildModel();
+      updateDeletedUI('eliminado #' + (i + 1));
+    }
+
+    function undoDelete() {
+      if (!deleteTool.deleted.length) { updateDeletedUI('nada para deshacer'); return; }
+      const i = deleteTool.deleted.pop();
+      deleteTool.lastShownIndex = -2;
+      buildModel();
+      updateDeletedUI('restaurado #' + (i + 1));
+    }
+
+    function toggleDeleteTool() {
+      deleteTool.active = !deleteTool.active;
+      if (deleteTool.active) {
+        deletebar.classList.add('on');
+        crosshair.classList.add('on');
+        deleteTool.lastShownIndex = -2;
+        updateDeletedUI('modo activado');
+        if (!controls.isLocked) controls.lock();
+      } else {
+        deletebar.classList.remove('on');
+        crosshair.classList.remove('on');
+        marker.visible = false;
+        deleteTool.lastShownIndex = -2;
+      }
+    }
+
+    function updateDeletedUI(msg) {
+      dcount.textContent = deleteTool.deleted.length;
+      if (msg) {
+        dstatus.textContent = msg;
+        clearTimeout(deleteTool.toast);
+        deleteTool.toast = setTimeout(() => { dstatus.textContent = ''; }, 2500);
+      }
+    }
+
+    function copyDeleteList() {
+      if (!deleteTool.deleted.length) { updateDeletedUI('lista vacía, nada que copiar'); return; }
+      const out = [];
+      out.push('# Vértices de floorplan.obj a eliminar (índices 1-based):');
+      out.push('[' + deleteTool.deleted.map((i) => i + 1).join(', ') + ']');
+      out.push('');
+      out.push('# índice: x y z   (coordenadas OBJ en metros)');
+      for (const i of deleteTool.deleted) {
+        const v = model.vertices[i];
+        out.push((i + 1) + ': ' + v[0].toFixed(4) + ' ' + v[1].toFixed(4) + ' ' + v[2].toFixed(4));
+      }
+      const text = out.join('\n');
+      console.log('Vértices a eliminar:\n' + text);
+      writeClipboard(text).then((ok) => {
+        dstatus.textContent = ok
+          ? ('copiados ' + deleteTool.deleted.length + ' vértices ✓')
+          : 'no se pudo copiar (mirá la consola)';
+        clearTimeout(deleteTool.toast);
+        deleteTool.toast = setTimeout(() => { dstatus.textContent = ''; }, 3000);
+      });
+    }
+
+    function writeClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true).catch(() => legacyCopy(text));
+      }
+      return Promise.resolve(legacyCopy(text));
+    }
+
+    function legacyCopy(text) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    fetch('floorplan.obj')
+      .then((res) => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then((text) => {
+        model = parseOBJ(text);
+        buildModel();
+
+        const box = new THREE.Box3().setFromObject(modelGroup);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
 
@@ -208,15 +518,14 @@
         camera.lookAt(center.x, box.min.y + EYE_HEIGHT, box.min.z);
 
         loadingEl.textContent =
-          'Modelo cargado — ' + size.x.toFixed(1) + ' × ' + size.z.toFixed(1) + ' m';
-      },
-      undefined,
-      (err) => {
+          'Modelo cargado — ' + size.x.toFixed(1) + ' × ' + size.z.toFixed(1) + ' m — ' +
+          model.vertices.length + ' vértices';
+      })
+      .catch((err) => {
         loadingEl.textContent =
           'Error al cargar floorplan.obj (¿sirves la carpeta por HTTP?)';
         console.error(err);
-      }
-    );
+      });
 
     const forward = new THREE.Vector3();
     const clock = new THREE.Clock();
@@ -239,6 +548,8 @@
         camera.position.y = EYE_HEIGHT;
       }
 
+      if (deleteTool.active) updateHighlight();
+
       const p = camera.position;
       camera.getWorldDirection(forward);
       const yaw = (Math.atan2(forward.x, forward.z) * 180) / Math.PI;
@@ -246,7 +557,8 @@
         'X: <b>' + p.x.toFixed(3) + '</b>  m\n' +
         'Y: <b>' + p.y.toFixed(3) + '</b>  m  (altura)\n' +
         'Z: <b>' + p.z.toFixed(3) + '</b>  m\n' +
-        'rumbo: <b>' + yaw.toFixed(1) + '</b>°';
+        'rumbo: <b>' + yaw.toFixed(1) + '</b>°' +
+        (deleteTool.active ? '\nmodo: <b>eliminar vértices</b>' : '');
 
       renderer.render(scene, camera);
     }
