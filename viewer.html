@@ -101,6 +101,11 @@
     const WALK_SPEED = 3.2;
     const RUN_SPEED = 6.5;
 
+    // floor_texture.jpg covers ~44 cm of floor across its width; keep the
+    // physical aspect ratio so the planks are not distorted when tiled.
+    const FLOOR_TILE_W = 0.44;
+    const FLOOR_TILE_H = FLOOR_TILE_W * (2304 / 4096);
+
     const app = document.getElementById('app');
     const hud = document.getElementById('hud');
     const overlay = document.getElementById('overlay');
@@ -118,8 +123,9 @@
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 500);
     camera.position.set(0, EYE_HEIGHT, 0);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.15));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xececec, 1.7));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
     dir.position.set(6, 12, 8);
     scene.add(dir);
 
@@ -139,6 +145,11 @@
 
     camera.position.set(0, EYE_HEIGHT, 0);
 
+    const floorTexture = new THREE.TextureLoader().load('floor_texture.jpg');
+    floorTexture.colorSpace = THREE.SRGBColorSpace;
+    floorTexture.wrapS = floorTexture.wrapT = THREE.MirroredRepeatWrapping;
+    floorTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
     const loader = new OBJLoader();
     loader.load(
       'floorplan.obj',
@@ -147,8 +158,37 @@
         // El modelo está en Z-up (Z = altura). Se rota a Y-up para Three.js.
         mesh.rotation.x = -Math.PI / 2;
 
+        const whiteMaterial = () => new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.95,
+          metalness: 0.0,
+          side: THREE.DoubleSide
+        });
+
         mesh.traverse((child) => {
-          if (child.isMesh) {
+          if (!child.isMesh) return;
+
+          // El OBJ no trae normales; sin ellas las caras quedan planas/negras.
+          child.geometry.computeVertexNormals();
+
+          if (child.name === 'floor') {
+            // Proyección planar del suelo (plano x/y del OBJ) en metros -> UV.
+            const pos = child.geometry.attributes.position;
+            const uv = new Float32Array(pos.count * 2);
+            for (let i = 0; i < pos.count; i++) {
+              uv[2 * i] = pos.getX(i) / FLOOR_TILE_W;
+              uv[2 * i + 1] = pos.getY(i) / FLOOR_TILE_H;
+            }
+            child.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+            child.material = new THREE.MeshStandardMaterial({
+              map: floorTexture,
+              roughness: 0.7,
+              metalness: 0.0,
+              side: THREE.DoubleSide
+            });
+          } else if (child.name === 'walls' || child.name === 'ceilings') {
+            child.material = whiteMaterial();
+          } else {
             child.material = new THREE.MeshStandardMaterial({
               color: 0xcfd6e2,
               roughness: 0.9,
