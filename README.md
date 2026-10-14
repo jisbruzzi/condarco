@@ -69,9 +69,10 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
 - Wall thickness modules found in the drawing: **14.2 / 28.3 / 42.6 units**
   (= 7 / 14 / 21 cm) plus a thin 8.5-unit glazing wall (4 cm).
 - Geometry: 86 axis-aligned boxes = 688 verts / 516 quads, plus a `ceilings`
-  pass = 44 quads (31 tiles + 13 drop-soffit faces), 176 verts. Totals:
-  **864 verts / 560 faces**. Extents X [-6.30, 6.15], Y [-8.88, 8.87],
-  Z [-0.05, 2.70].
+  pass = 44 quads (31 tiles + 13 drop-soffit faces), 176 verts. Built as
+  **864 verts / 560 faces**; after a vertex-removal pass (see the vertex tool
+  below) it is now **822 verts / 500 faces**. Extents X [-6.30, 6.15],
+  Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
 
@@ -122,6 +123,44 @@ Wall-strip extraction summary:
   x −21.7…−7.6, window jamb column x 111.3–125.4.
 - Wall strips lying ≥85 % inside a placeholder block footprint were culled
   (no double geometry inside bath/kitchen/wardrobe).
+
+#### Interactive vertex-deletion tool (viewer) + `remove_vertices.js`
+
+The boxy OBJ inherits folds / doubled strips from the SVG linework. To prune
+them without rebuilding the whole model, `index.html` and `viewer.html` (kept
+identical) ship a deletion mode:
+
+- **Ctrl+D** toggles it. A top banner and a centre crosshair appear; the vertex
+  nearest the screen centre is highlighted by a magenta sphere (drawn with
+  `depthTest:false`, so it shows through walls) and its OBJ index + XYZ are
+  printed in the banner (`#N obj(x, y, z)`, metres, OBJ frame).
+- **Left click** removes the highlighted vertex (and every face using it) and
+  rebuilds the mesh live; **Ctrl+Z** undoes; **Ctrl+C** (or clicking the banner)
+  copies the list of removed vertices in the format below.
+
+Apply a copied list permanently with the Node script at the repo root:
+
+```
+node remove_vertices.js 91 90 122 ...        # explicit 1-based indices
+node remove_vertices.js --file list.txt      # read a copied list / [..] block
+node remove_vertices.js --dry-run 91 90      # report only, do not write
+```
+
+It removes the listed vertices, plus each one's **footprint-equivalent**
+counterpart — the same `(x, y)` at the wall top (`z = 2.7`) and any true
+`ceilings` vertex at the same plan position — then drops every face that used
+them, prunes now-unused vertices, renumbers the face indices and refreshes the
+header count. Options: `--tol <m>` (footprint tolerance, default 0.001),
+`--keep-orphans`, `--out <path>`; it rewrites `floorplan.obj` in place by
+default.
+
+The first applied pass (indices below) removed 21 base corners + their 21
+ceiling-height counterparts = **42 verts / 60 faces**, taking the model from
+864/560 to **822/500**:
+
+```
+[91, 90, 122, 123, 593, 594, 578, 17, 577, 58, 50, 51, 66, 67, 602, 554, 129, 546, 545, 562, 561]
+```
 
 #### Floor texture & interior materials (viewer)
 
@@ -187,6 +226,10 @@ original `<style>` block are retained. (Note: these are serialized with
 `ceilings` group to `floorplan.obj` in place: `node add_ceilings.js`.
 It is idempotent only against the freshly built OBJ, so re-run `build_obj.py`
 first if regenerating from scratch.
+
+`remove_vertices.js` (Node, repo root) applies a vertex-deletion list from the
+viewer's Ctrl+D tool to `floorplan.obj` in place (see the section 2 write-up
+for the exact behaviour and options).
 
 A shaded/wireframe OBJ previewer (pure PIL painter's algorithm) was run
 inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.
