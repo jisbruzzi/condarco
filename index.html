@@ -101,11 +101,10 @@
     const WALK_SPEED = 3.2;
     const RUN_SPEED = 6.5;
 
-    // floor_texture.jpg is a 90°-rotated photo (2304×4096) whose long side
-    // covers ~44 cm of floor; the short side then covers 44·2304/4096 cm.
-    // Physical scale is kept so the planks are not distorted when tiled.
-    const FLOOR_TILE_LONG = 0.44;
-    const FLOOR_TILE_SHORT = FLOOR_TILE_LONG * (2304 / 4096);
+    // floor_texture.jpg is a seamless 2048×2048 CC0 wood-plank texture
+    // (Poly Haven "Wood Floor"); one tile covers ~1.2 m of floor so the
+    // planks read at a realistic width and repeat without visible seams.
+    const FLOOR_TILE = 1.2;
 
     const app = document.getElementById('app');
     const hud = document.getElementById('hud');
@@ -148,7 +147,7 @@
 
     const floorTexture = new THREE.TextureLoader().load('floor_texture.jpg');
     floorTexture.colorSpace = THREE.SRGBColorSpace;
-    floorTexture.wrapS = floorTexture.wrapT = THREE.MirroredRepeatWrapping;
+    floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
     floorTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
     const loader = new OBJLoader();
@@ -177,8 +176,8 @@
             const pos = child.geometry.attributes.position;
             const uv = new Float32Array(pos.count * 2);
             for (let i = 0; i < pos.count; i++) {
-              uv[2 * i] = pos.getX(i) / FLOOR_TILE_SHORT;
-              uv[2 * i + 1] = pos.getY(i) / FLOOR_TILE_LONG;
+              uv[2 * i] = pos.getX(i) / FLOOR_TILE;
+              uv[2 * i + 1] = pos.getY(i) / FLOOR_TILE;
             }
             child.geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
             child.material = new THREE.MeshStandardMaterial({

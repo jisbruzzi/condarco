@@ -125,25 +125,19 @@ Wall-strip extraction summary:
 
 #### Floor texture & interior materials (viewer)
 
-`floor_texture.jpg` (2304×4096) is an oak-plank photo **rotated 90°** (planks
-now run north–south) whose long (4096 px) side covers **~44 cm of floor**; the
-short side then covers 44·2304/4096 ≈ 24.75 cm, so one tile is 24.75 × 44 cm.
+`floor_texture.jpg` (2048×2048) is a **seamless, evenly-lit CC0 wood-plank
+diffuse map from Poly Haven** ("Wood Floor", https://polyhaven.com/a/wood_floor,
+CC0 public domain), stored unmodified. It replaced the user-supplied photo,
+whose baked-in lighting gradient could not be removed cleanly enough — any
+residual repeated with every tile and read as a strong gradient while walking.
 
-- The file was **cleaned in place** by a flat-field pass: a full-resolution
-  low-pass (Gaussian, σ ≈ 18 px) of the photo estimates the uneven
-  illumination, which is divided out. This removes the lighting
-  gradient/hotspot/reflection. σ is deliberately small: it flattens the
-  low-frequency field down to a ~1–2 % residual (was ~44 % in the original, and
-  ~7 % after a coarse first pass). The coarse residual was the real bug — when
-  the 44 cm tile repeats across the floor that residual becomes a strong,
-  visibly repeating brightness gradient while walking, which is far more
-  obvious than the single gradient visible in the still image.
 - Both `index.html` and `viewer.html` assign materials by OBJ group name:
   `floor` → `MeshStandardMaterial` (roughness **1.0**, no sheen) with the
-  texture map, planar UVs taken from the OBJ `x`/`y` metres
-  (`u = x / 0.2475`, `v = y / 0.44`) and `MirroredRepeatWrapping` (so the
-  repeated tiles meet without a hard seam); `walls` and `ceilings` → plain
-  **white** `MeshStandardMaterial`; the `block_*` placeholders stay light grey.
+  seamless map, planar UVs taken from the OBJ `x`/`y` metres
+  (`u = x / 1.2`, `v = y / 1.2`, i.e. one tile ≈ 1.2 m so planks read at a
+  realistic width) and plain `RepeatWrapping` (the map is already seamless);
+  `walls` and `ceilings` → plain **white** `MeshStandardMaterial`; the
+  `block_*` placeholders stay light grey.
 - The OBJ carries no normals, so the viewer now calls
   `computeVertexNormals()` (with `side: DoubleSide`, giving flat, correctly lit
   faces). The hemisphere light's ground colour was lightened and a soft
