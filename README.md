@@ -58,7 +58,7 @@ wardrobe run (hatched), full bathroom (toilet, bidet, bathtub, basin),
 "Placard" closet, red sofa module, corner couch + round table, balcony with
 door, "Mesa comedor" replacement-table label.
 
-### `floorplan.obj` (25,674 bytes) — boxy low-fi 3D model
+### `floorplan.obj` (30,747 bytes) — boxy low-fi 3D model
 
 Generated **only from `Capa_1` linework** (black furniture ignored per plan;
 kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
@@ -68,20 +68,42 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
   (~1.8 m), counter depth (~44 cm), fridge width (~68 cm), wall thicknesses.
 - Wall thickness modules found in the drawing: **14.2 / 28.3 / 42.6 units**
   (= 7 / 14 / 21 cm) plus a thin 8.5-unit glazing wall (4 cm).
-- Geometry: 86 axis-aligned boxes = 688 verts / 516 quads. Extents
-  X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
+- Geometry: 86 axis-aligned boxes = 688 verts / 516 quads, plus a `ceilings`
+  pass = 44 quads (31 tiles + 13 drop-soffit faces), 176 verts. Totals:
+  **864 verts / 560 faces**. Extents X [-6.30, 6.15], Y [-8.88, 8.87],
+  Z [-0.05, 2.70].
 
 Groups:
 
-| Group | Boxes | Contents | Height |
+| Group | Faces | Contents | Height |
 |---|---|---|---|
-| `walls` | 80 | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings left as **gaps** for the later windows pass. | 2.70 m |
-| `floor` | 1 | Full footprint slab 12.45 m × 17.75 m | 0.05 m (z −0.05→0) |
-| `block_bed1` | 1 | Master bed placeholder, footprint 2.9 × 2.35 m | 0.55 m |
-| `block_bed2` | 1 | Lucas bed placeholder, 1.35 × 2.7 m | 0.55 m |
-| `block_wardrobe` | 1 | Closet band, 3.15 × 1.4 m | 2.30 m |
-| `block_bath` | 1 | Whole bathroom block (fixtures inside) | 0.90 m |
-| `block_kitchen` | 1 | Kitchen counter band, 0.44 × 4.9 m | 0.90 m |
+| `walls` | 480 (80 boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings left as **gaps** for the later windows pass. | 2.70 m |
+| `floor` | 6 (1 box) | Full footprint slab 12.45 m × 17.75 m | 0.05 m (z −0.05→0) |
+| `block_bed1` | 6 | Master bed placeholder, footprint 2.9 × 2.35 m | 0.55 m |
+| `block_bed2` | 6 | Lucas bed placeholder, 1.35 × 2.7 m | 0.55 m |
+| `block_wardrobe` | 6 | Closet band, 3.15 × 1.4 m | 2.30 m |
+| `block_bath` | 6 | Whole bathroom block (fixtures inside) | 0.90 m |
+| `block_kitchen` | 6 | Kitchen counter band, 0.44 × 4.9 m | 0.90 m |
+| `ceilings` | 44 | Horizontal ceiling tiles + vertical drop-soffit faces (see below) | 2.60 m main / 2.20 m low |
+
+#### Ceilings (added after the main build)
+
+Added by `add_ceilings.js` (run `node add_ceilings.js` to regenerate). Ceiling
+zones are axis-aligned rectangles snapped to **wall centre-lines** so the
+2.20 → 2.60 drop faces land inside the walls (only surfacing across open
+sides); the wall tops stay at 2.70 m and hide the ceiling edges.
+
+| Zone (OBJ, metres) | Footprint x0,x1 × y0,y1 | Height |
+|---|---|---|
+| main | building envelope minus the low zones | 2.60 m |
+| entry corridor (south hall off the front door) | 0.94, 2.72 × −8.61, −3.77 | 2.20 m |
+| cross corridor (bedrooms / bath / living) | −2.87, 1.62 × −1.33, 0.38 | 2.20 m |
+| kitchen | −1.44, 1.62 × 0.38, 5.38 | 2.20 m |
+
+The OBJ is Z-up in the file (`x` east, `y` north, `z` height); the browser
+viewer (`index.html`) rotates −90° about X for Three.js, so its HUD shows
+`world X = obj x`, `world Y = height`, `world Z = −obj y`. The user-supplied
+walk-through coordinates were given in that HUD frame.
 
 Block footprints in source units (x0, y0)–(x1, y1):
 `wardrobe (-1440,1615)-(-810,1895)` · `bed1 (-1400,1005)-(-820,1475)` ·
@@ -139,6 +161,11 @@ original `<style>` block are retained. (Note: these are serialized with
 | `final.py` | Builds candidate-B raw tree + stray hunt | → `final_raw.svg` |
 | `tidy.py` | Stray removal + ink-bbox probe (first pass; scale bug fixed by re-probing `final_page.svg`) | → `floorplan.svg` |
 | `build_obj.py` | **OBJ generator**: culling, manual strips, blocks, slab, transform to meters | `strips.json` → `floorplan.obj`, `final_boxes.json` |
+
+`add_ceilings.js` (Node, lives in the repo root, not `/tmp`) appends the
+`ceilings` group to `floorplan.obj` in place: `node add_ceilings.js`.
+It is idempotent only against the freshly built OBJ, so re-run `build_obj.py`
+first if regenerating from scratch.
 
 A shaded/wireframe OBJ previewer (pure PIL painter's algorithm) was run
 inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.
