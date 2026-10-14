@@ -123,6 +123,28 @@ Wall-strip extraction summary:
 - Wall strips lying ≥85 % inside a placeholder block footprint were culled
   (no double geometry inside bath/kitchen/wardrobe).
 
+#### Floor texture & interior materials (viewer)
+
+`floor_texture.jpg` (4096×2304) is an oak-plank photo that maps to **~44 cm of
+floor across its width**; the tile's height follows the image aspect
+(2304/4096), i.e. ≈ 24.75 cm.
+
+- The file was **cleaned in place** by a flat-field pass: a heavily blurred
+  (low-frequency) version of the photo is used to estimate the uneven
+  illumination, which is then divided out — removing the lighting
+  gradient/hotspot/reflection so the plank tone is even and tileable-looking.
+- Both `index.html` and `viewer.html` assign materials by OBJ group name:
+  `floor` → `MeshStandardMaterial` with the texture map, planar UVs taken from
+  the OBJ `x`/`y` metres (`u = x / 0.44`, `v = y / 0.2475`) and
+  `MirroredRepeatWrapping` (so the repeated tiles meet without a hard seam);
+  `walls` and `ceilings` → plain **white** `MeshStandardMaterial`; the
+  `block_*` placeholders stay light grey.
+- The OBJ carries no normals, so the viewer now calls
+  `computeVertexNormals()` (with `side: DoubleSide`, giving flat, correctly lit
+  faces). The hemisphere light's ground colour was lightened and a soft
+  ambient light added so the white walls/ceiling read as white rather than the
+  previous dark blue-grey.
+
 ---
 
 ## 3. `floorplan_candidates/` — review artifacts
