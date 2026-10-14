@@ -125,20 +125,25 @@ Wall-strip extraction summary:
 
 #### Floor texture & interior materials (viewer)
 
-`floor_texture.jpg` (4096×2304) is an oak-plank photo that maps to **~44 cm of
-floor across its width**; the tile's height follows the image aspect
-(2304/4096), i.e. ≈ 24.75 cm.
+`floor_texture.jpg` (2304×4096) is an oak-plank photo **rotated 90°** (planks
+now run north–south) whose long (4096 px) side covers **~44 cm of floor**; the
+short side then covers 44·2304/4096 ≈ 24.75 cm, so one tile is 24.75 × 44 cm.
 
-- The file was **cleaned in place** by a flat-field pass: a heavily blurred
-  (low-frequency) version of the photo is used to estimate the uneven
-  illumination, which is then divided out — removing the lighting
-  gradient/hotspot/reflection so the plank tone is even and tileable-looking.
+- The file was **cleaned in place** by a flat-field pass: a full-resolution
+  low-pass (Gaussian, σ ≈ 18 px) of the photo estimates the uneven
+  illumination, which is divided out. This removes the lighting
+  gradient/hotspot/reflection. σ is deliberately small: it flattens the
+  low-frequency field down to a ~1–2 % residual (was ~44 % in the original, and
+  ~7 % after a coarse first pass). The coarse residual was the real bug — when
+  the 44 cm tile repeats across the floor that residual becomes a strong,
+  visibly repeating brightness gradient while walking, which is far more
+  obvious than the single gradient visible in the still image.
 - Both `index.html` and `viewer.html` assign materials by OBJ group name:
-  `floor` → `MeshStandardMaterial` with the texture map, planar UVs taken from
-  the OBJ `x`/`y` metres (`u = x / 0.44`, `v = y / 0.2475`) and
-  `MirroredRepeatWrapping` (so the repeated tiles meet without a hard seam);
-  `walls` and `ceilings` → plain **white** `MeshStandardMaterial`; the
-  `block_*` placeholders stay light grey.
+  `floor` → `MeshStandardMaterial` (roughness **1.0**, no sheen) with the
+  texture map, planar UVs taken from the OBJ `x`/`y` metres
+  (`u = x / 0.2475`, `v = y / 0.44`) and `MirroredRepeatWrapping` (so the
+  repeated tiles meet without a hard seam); `walls` and `ceilings` → plain
+  **white** `MeshStandardMaterial`; the `block_*` placeholders stay light grey.
 - The OBJ carries no normals, so the viewer now calls
   `computeVertexNormals()` (with `side: DoubleSide`, giving flat, correctly lit
   faces). The hemisphere light's ground colour was lightened and a soft
