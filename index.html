@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recorrido de la casa (floorplan.obj)</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #10131a; font-family: system-ui, sans-serif; }
+    #app { position: fixed; inset: 0; }
+
+    #hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #d7ffe0;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border: 1px solid rgba(120, 255, 170, 0.35);
+      border-radius: 8px;
+      pointer-events: none;
+      white-space: pre;
+      z-index: 20;
+    }
+    #hud b { color: #7dffb0; }
+
+    #help {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.45);
+      color: #cdd6e4;
+      font: 12px/1.6 system-ui, sans-serif;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(8, 10, 15, 0.82);
+      color: #eef2f8;
+      cursor: pointer;
+      z-index: 30;
+      text-align: center;
+      padding: 20px;
+    }
+    #overlay h1 { margin: 0; font-size: 22px; }
+    #overlay p { margin: 0; color: #9fb0c7; font-size: 14px; }
+    #overlay .btn {
+      margin-top: 8px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      background: #2ee27a;
+      color: #04210f;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    #overlay.hidden { display: none; }
+    #loading { color: #9fb0c7; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="help">
+    <b>WASD</b> moverse &nbsp;·&nbsp; <b>Mouse</b> mirar &nbsp;·&nbsp; <b>Shift</b> correr &nbsp;·&nbsp; <b>Esc</b> liberar cursor
+  </div>
+
+  <div id="hud"></div>
+
+  <div id="overlay">
+    <h1>Recorrido de la casa</h1>
+    <p id="loading">Cargando floorplan.obj…</p>
+    <p>WASD para caminar, mouse para mirar.</p>
+    <div class="btn" id="startBtn">Haz clic para entrar</div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+    const EYE_HEIGHT = 1.55;
+    const WALK_SPEED = 3.2;
+    const RUN_SPEED = 6.5;
+
+    const app = document.getElementById('app');
+    const hud = document.getElementById('hud');
+    const overlay = document.getElementById('overlay');
+    const loadingEl = document.getElementById('loading');
+    const startBtn = document.getElementById('startBtn');
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x10131a);
+
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 500);
+    camera.position.set(0, EYE_HEIGHT, 0);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.15));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+    dir.position.set(6, 12, 8);
+    scene.add(dir);
+
+    const controls = new PointerLockControls(camera, renderer.domElement);
+
+    const keys = Object.create(null);
+    document.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'Space') e.preventDefault();
+    });
+    document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+    overlay.addEventListener('click', () => controls.lock());
+    startBtn.addEventListener('click', () => controls.lock());
+    controls.addEventListener('lock', () => overlay.classList.add('hidden'));
+    controls.addEventListener('unlock', () => overlay.classList.remove('hidden'));
+
+    camera.position.set(0, EYE_HEIGHT, 0);
+
+    const loader = new OBJLoader();
+    loader.load(
+      'floorplan.obj',
+      (obj) => {
+        const mesh = obj;
+        // El modelo está en Z-up (Z = altura). Se rota a Y-up para Three.js.
+        mesh.rotation.x = -Math.PI / 2;
+
+        mesh.traverse((child) => {
+          if (child.isMesh) {
+            child.material = new THREE.MeshStandardMaterial({
+              color: 0xcfd6e2,
+              roughness: 0.9,
+              metalness: 0.0,
+              side: THREE.DoubleSide
+            });
+          }
+        });
+
+        scene.add(mesh);
+
+        const box = new THREE.Box3().setFromObject(mesh);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+
+        camera.position.set(center.x, box.min.y + EYE_HEIGHT, center.z);
+        camera.lookAt(center.x, box.min.y + EYE_HEIGHT, box.min.z);
+
+        loadingEl.textContent =
+          'Modelo cargado — ' + size.x.toFixed(1) + ' × ' + size.z.toFixed(1) + ' m';
+      },
+      undefined,
+      (err) => {
+        loadingEl.textContent =
+          'Error al cargar floorplan.obj (¿sirves la carpeta por HTTP?)';
+        console.error(err);
+      }
+    );
+
+    const forward = new THREE.Vector3();
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+
+      const speed = keys['ShiftLeft'] || keys['ShiftRight'] ? RUN_SPEED : WALK_SPEED;
+      let f = 0, s = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) f += 1;
+      if (keys['KeyS'] || keys['ArrowDown']) f -= 1;
+      if (keys['KeyD'] || keys['ArrowRight']) s += 1;
+      if (keys['KeyA'] || keys['ArrowLeft']) s -= 1;
+
+      if (controls.isLocked && (f || s)) {
+        const len = Math.hypot(f, s);
+        controls.moveForward((f / len) * speed * dt);
+        controls.moveRight((s / len) * speed * dt);
+        camera.position.y = EYE_HEIGHT;
+      }
+
+      const p = camera.position;
+      camera.getWorldDirection(forward);
+      const yaw = (Math.atan2(forward.x, forward.z) * 180) / Math.PI;
+      hud.innerHTML =
+        'X: <b>' + p.x.toFixed(3) + '</b>  m\n' +
+        'Y: <b>' + p.y.toFixed(3) + '</b>  m  (altura)\n' +
+        'Z: <b>' + p.z.toFixed(3) + '</b>  m\n' +
+        'rumbo: <b>' + yaw.toFixed(1) + '</b>°';
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
