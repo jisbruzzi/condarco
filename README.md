@@ -71,14 +71,15 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
 - Geometry: 86 axis-aligned boxes = 688 verts / 516 quads, plus a `ceilings`
   pass = 44 quads (31 tiles + 13 drop-soffit faces), 176 verts. Built as
   **864 verts / 560 faces**; after a vertex-removal pass (see the vertex tool
-  below) it is now **822 verts / 500 faces**. Extents X [-6.30, 6.15],
-  Y [-8.88, 8.87], Z [-0.05, 2.70].
+  below) it was **822 verts / 500 faces**, and after the wall-overlap cleanup
+  (`clean_walls.js`, below) it is now **672 verts / 416 faces**. Extents
+  X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
 
 | Group | Faces | Contents | Height |
 |---|---|---|---|
-| `walls` | 480 (80 boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings left as **gaps** for the later windows pass. | 2.70 m |
+| `walls` | 336 (56 disjoint boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings left as **gaps** for the later windows pass. Since the cleanup pass these boxes no longer overlap, so every plan corner is a real vertex the viewer can select. | 2.70 m |
 | `floor` | 6 (1 box) | Full footprint slab 12.45 m × 17.75 m | 0.05 m (z −0.05→0) |
 | `block_bed1` | 6 | Master bed placeholder, footprint 2.9 × 2.35 m | 0.55 m |
 | `block_bed2` | 6 | Lucas bed placeholder, 1.35 × 2.7 m | 0.55 m |
@@ -162,6 +163,30 @@ ceiling-height counterparts = **42 verts / 60 faces**, taking the model from
 [91, 90, 122, 123, 593, 594, 578, 17, 577, 58, 50, 51, 66, 67, 602, 554, 129, 546, 545, 562, 561]
 ```
 
+#### Wall-overlap cleanup + `clean_walls.js`
+
+The strips were emitted one box each and overlapped heavily (junction
+extensions, doubled linework, parallel runs): 989 box pairs intersected
+volumetrically, so inner faces buried the real corners and the Ctrl+D tool
+could not highlight them. `clean_walls.js` (Node, repo root) rebuilds the
+`walls` section from the union of the box footprints:
+
+```
+node clean_walls.js                 # rewrite floorplan.obj in place
+node clean_walls.js --dry-run       # report only
+node clean_walls.js --minw 0.02     # drop fragments thinner than 2 cm
+node clean_walls.js --out clean.obj # write elsewhere
+```
+
+It parses every valid wall box (6 faces / 8 verts / 2 distinct x, y, z), drops
+the ~18 orphan scrap faces that never formed a box, splits each footprint at
+the other boxes' edges, keeps each cell covered by the union once, merges cells
+back into maximal rectangles, and re-emits them as fresh z 0→2.7 boxes. Other
+sections (`floor`, `ceilings`, `block_*`) are only renumbered, never modified.
+Result: **67 overlapping boxes → 56 disjoint boxes**, `walls` 336 faces, model
+**672 verts / 416 faces**; `node move_vertices.js --audit` still reports every
+edge axis-aligned (90°). Kept here so future geometry edits stay reproducible.
+
 #### Floor texture & interior materials (viewer)
 
 `floor_texture.jpg` (2048×2048) is a **seamless, evenly-lit CC0 wood-plank
@@ -230,6 +255,13 @@ first if regenerating from scratch.
 `remove_vertices.js` (Node, repo root) applies a vertex-deletion list from the
 viewer's Ctrl+D tool to `floorplan.obj` in place (see the section 2 write-up
 for the exact behaviour and options).
+
+`move_vertices.js` (Node, repo root) shifts axis-aligned vertex planes
+(`--plane x|y from to`) to close gaps / align corners, and reports with
+`--audit` whether every face edge stays parallel to an axis (the 90° check).
+
+`clean_walls.js` (Node, repo root) rebuilds the `walls` section from the union
+of the box footprints, removing overlapping/duplicated boxes (see section 2).
 
 A shaded/wireframe OBJ previewer (pure PIL painter's algorithm) was run
 inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.
