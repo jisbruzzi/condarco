@@ -72,7 +72,9 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
   pass = 44 quads (31 tiles + 13 drop-soffit faces), 176 verts. Built as
   **864 verts / 560 faces**; after a vertex-removal pass (see the vertex tool
   below) it was **822 verts / 500 faces**, and after the wall-overlap cleanup
-  (`clean_walls.js`, below) it is now **672 verts / 416 faces**. Extents
+  (`clean_walls.js`, below) it is now **672 verts / 416 faces**; the plinth pass
+  (`add_plinths.js`) then adds 56 wooden baseboards = 448 verts / 336 faces, for
+  a total of **1120 verts / 752 faces**. Extents
   X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
@@ -87,6 +89,7 @@ Groups:
 | `block_bath` | 6 | Whole bathroom block (fixtures inside) | 0.90 m |
 | `block_kitchen` | 6 | Kitchen counter band, 0.44 × 4.9 m | 0.90 m |
 | `ceilings` | 44 | Horizontal ceiling tiles + vertical drop-soffit faces (see below) | 2.60 m main / 2.20 m low |
+| `plinths` | 336 (56 boxes) | Wooden baseboard collar around the foot of every wall box (see below) | 0.06 m |
 
 #### Ceilings (added after the main build)
 
@@ -101,6 +104,17 @@ sides); the wall tops stay at 2.70 m and hide the ceiling edges.
 | entry corridor (south hall off the front door) | 0.94, 2.72 × −8.61, −3.77 | 2.20 m |
 | cross corridor (bedrooms / bath / living) | −2.87, 1.62 × −1.33, 0.38 | 2.20 m |
 | kitchen | −1.44, 1.62 × 0.38, 5.38 | 2.20 m |
+
+#### Plinths (added after the main build)
+
+Added by `add_plinths.js` (run `node add_plinths.js` to regenerate; re-run it
+after rebuilding the walls). Wooden skirting boards run along the foot of **the
+whole house**: **6 cm tall, 1.5 cm proud of the wall face**. For each of the 56
+wall boxes the script emits a collar box — the wall footprint expanded 1.5 cm on
+all four sides, from z 0 to 0.06 m — so from either room the visible ledge is a
+1.5 cm baseboard that automatically wraps every wall run, corner and doorway
+jamb. It is procedural from the `walls` group, so it stays in sync if the walls
+move, and it is idempotent (re-running replaces the previous `o plinths` block).
 
 The OBJ is Z-up in the file (`x` east, `y` north, `z` height); the browser
 viewer (`index.html`) rotates −90° about X for Three.js, so its HUD shows
@@ -200,7 +214,8 @@ residual repeated with every tile and read as a strong gradient while walking.
   seamless map, planar UVs taken from the OBJ `x`/`y` metres
   (`u = x / 1.2`, `v = y / 1.2`, i.e. one tile ≈ 1.2 m so planks read at a
   realistic width) and plain `RepeatWrapping` (the map is already seamless);
-  `walls` and `ceilings` → plain **white** `MeshStandardMaterial`; the
+  `walls` and `ceilings` → plain **white** `MeshStandardMaterial`; `plinths` →
+  a wood-brown `MeshStandardMaterial` (matching the floor finish); the
   `block_*` placeholders stay light grey.
 - The OBJ carries no normals, so the viewer now calls
   `computeVertexNormals()` (with `side: DoubleSide`, giving flat, correctly lit
@@ -262,6 +277,11 @@ for the exact behaviour and options).
 
 `clean_walls.js` (Node, repo root) rebuilds the `walls` section from the union
 of the box footprints, removing overlapping/duplicated boxes (see section 2).
+
+`add_plinths.js` (Node, repo root) appends the `plinths` group to
+`floorplan.obj` in place: `node add_plinths.js`. It derives one 6 cm × 1.5 cm
+baseboard collar per `walls` box, is idempotent (re-running replaces the block),
+and should be re-run after any pass that rebuilds the walls.
 
 A shaded/wireframe OBJ previewer (pure PIL painter's algorithm) was run
 inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.

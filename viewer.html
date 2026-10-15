@@ -198,7 +198,7 @@
     // ---------------------------------------------------------------------
     let model = null;          // { vertices: [[x,y,z], ...], sections: [{ name, faces: [[i,...]] }] }
     let modelGroup = null;     // Group con una malla por sección 'o' del OBJ
-    let floorMaterial, wallMaterial, blockMaterial;
+    let floorMaterial, wallMaterial, blockMaterial, plinthMaterial;
 
     const deleteTool = {
       active: false,
@@ -267,10 +267,15 @@
     blockMaterial = new THREE.MeshStandardMaterial({
       color: 0xcfd6e2, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide
     });
+    // Zócalos de madera (6 cm alto, 1.5 cm de fondo) al pie de todas las paredes.
+    plinthMaterial = new THREE.MeshStandardMaterial({
+      color: 0x7a5535, roughness: 0.65, metalness: 0.0, side: THREE.DoubleSide
+    });
 
     function materialFor(name) {
       if (name === 'floor') return floorMaterial;
       if (name === 'walls' || name === 'ceilings') return wallMaterial;
+      if (name === 'plinths') return plinthMaterial;
       return blockMaterial;
     }
 
