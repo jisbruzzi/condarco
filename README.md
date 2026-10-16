@@ -73,15 +73,16 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
   **864 verts / 560 faces**; after a vertex-removal pass (see the vertex tool
   below) it was **822 verts / 500 faces**, and after the wall-overlap cleanup
   (`clean_walls.js`, below) it is now **672 verts / 416 faces**; the plinth pass
-  (`add_plinths.js`) then adds 56 wooden baseboards = 448 verts / 336 faces, for
-  a total of **1120 verts / 752 faces**. Extents
+  (`add_plinths.js`) then adds 56 wooden baseboards = 448 verts / 336 faces, and
+  the openings pass (`add_openings.js`, below) carves the window/balcony holes,
+  leaving **1240 verts / 842 faces**. Extents
   X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
 
 | Group | Faces | Contents | Height |
 |---|---|---|---|
-| `walls` | 336 (56 disjoint boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings left as **gaps** for the later windows pass. Since the cleanup pass these boxes no longer overlap, so every plan corner is a real vertex the viewer can select. | 2.70 m |
+| `walls` | 408 (68 disjoint boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings are cut as holes (see the openings pass below). The boxes never overlap, so every plan corner is a real vertex the viewer can select. | 2.70 m |
 | `floor` | 6 (1 box) | Full footprint slab 12.45 m × 17.75 m | 0.05 m (z −0.05→0) |
 | `block_bed1` | 6 | Master bed placeholder, footprint 2.9 × 2.35 m | 0.55 m |
 | `block_bed2` | 6 | Lucas bed placeholder, 1.35 × 2.7 m | 0.55 m |
@@ -115,6 +116,28 @@ all four sides, from z 0 to 0.06 m — so from either room the visible ledge is 
 1.5 cm baseboard that automatically wraps every wall run, corner and doorway
 jamb. It is procedural from the `walls` group, so it stays in sync if the walls
 move, and it is idempotent (re-running replaces the previous `o plinths` block).
+
+#### Window & sliding-door openings (added after the main build)
+
+Added by `add_openings.js` (run `node add_openings.js` to regenerate; `--dry-run`
+reports only). It carves axis-aligned holes out of the `walls` and `plinths`
+sections — **no window/door leaf or glazing is added**, only the masonry holes.
+Each opening is an axis-aligned void box; every wall box that overlaps it is
+split into the surrounding pieces (sill below, lintel above, jambs on either
+side) via a 6-slab box-subtraction, so the 90° invariant still holds
+(`node move_vertices.js --audit` OK). Corner references below are OBJ vertex
+numbers (`#N`, as shown by the Ctrl+D tool); metres in the OBJ frame.
+
+| Opening | Wall | Run | Vertical |
+|---|---|---|---|
+| `window1` entrance | N-S, x 0.831–1.044 | 38 cm from #282 (y −8.497), 140 cm wide | 0.95 → 2.05 m |
+| `window2` kitchen | E-W, y 5.272–5.485 | 74 cm west of #834 (x 1.719), 60 cm wide | 0.95 → 2.05 m |
+| `window3` living | E-W, y 8.498–8.601 | 72 cm east of #1107 to 28 cm short of #844 | 0.95 → 2.05 m |
+| `balcony_door` | N-S, x 1.491–1.704 | 30 cm from #834 to 16 cm from #1107 | 0 → 2.10 m |
+
+All windows share a **95 cm sill and 110 cm height**; the sliding balcony door
+runs floor → 210 cm. The pass is idempotent (re-running finds no overlap with
+the already-cut holes).
 
 The OBJ is Z-up in the file (`x` east, `y` north, `z` height); the browser
 viewer (`index.html`) rotates −90° about X for Three.js, so its HUD shows
@@ -283,6 +306,11 @@ of the box footprints, removing overlapping/duplicated boxes (see section 2).
 baseboard collar per `walls` box, is idempotent (re-running replaces the block),
 and should be re-run after any pass that rebuilds the walls.
 
+`add_openings.js` (Node, repo root) carves the window / sliding-balcony-door
+holes out of the `walls` + `plinths` sections in place (see the section 2
+write-up): `node add_openings.js`. Run it after the walls are final; it is
+idempotent and keeps all edges axis-aligned.
+
 A shaded/wireframe OBJ previewer (pure PIL painter's algorithm) was run
 inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.
 
@@ -321,9 +349,10 @@ inline (no script file) to produce `obj_iso.png` / `obj_view_*.png`.
 
 ## 6. Known limitations / next iteration hooks
 
-- **Windows**: openings are wall *gaps*; windows must be added later (the
-  geometry deliberately leaves those gaps clean, including the tall living-room
-  glazing band on the top and right walls).
+- **Windows**: openings are now real holes cut in the walls (`add_openings.js`),
+  95 cm sill / 110 cm high, plus the tall living-room band on the top wall. No
+  frames or glazing yet — add those as a later pass. The balcony sliding door
+  hole (floor → 210 cm) is also cut, but has no leaf/glass.
 - **Doors**: not modeled; swing arcs in the drawing (`st1` curves) were
   dropped with the decoration classes.
 - **Bathroom/kitchen/beds**: single coarse boxes by design.
