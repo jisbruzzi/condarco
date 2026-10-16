@@ -249,6 +249,36 @@ residual repeated with every tile and read as a strong gradient while walking.
   ambient light added so the white walls/ceiling read as white rather than the
   previous dark blue-grey.
 
+#### Lighting, skybox and day/night (`Ctrl+S`)
+
+The viewer now renders with a full day/night lighting rig instead of the flat
+hemisphere+ambient fill, so the actual light conditions can be judged from
+inside the house.
+
+- **Renderer**: `shadowMap` on (`PCFSoftShadowMap`), ACES filmic tone mapping,
+  camera far raised to 2000 m to fit the sky dome.
+- **Day** (default): a Three.js `Sky` atmospheric dome (turbidity 4, rayleigh
+  1.6) with the sun at **28° elevation / 160° azimuth** (low sun from the
+  north-east). A `DirectionalLight` (`0xfff3e0`, intensity 3.0) matches the
+  `Sky` sun direction, casts shadows with a ±22 m ortho frustum over the whole
+  house + surroundings, plus a skylight hemisphere and a small ambient fill.
+  Sunlight therefore enters through the window/door openings and throws
+  window-shaped light patches and shadows across the interior; the building
+  also casts a shadow on an added **ground plane** (400×400 m, receives
+  shadows) outside.
+- **Night** (`Ctrl+S`): swaps the `scene.background` to a procedurally generated
+  **equirectangular night sky** canvas (vertical gradient + ~4200 stars + a
+  faint Milky Way band), dims everything to a cool hemisphere/ambient and a
+  faint `DirectionalLight` "moonlight", and switches on a **warm pendant lamp**
+  in the middle of the living room (the big north room, west of the balcony
+  glazing): a `PointLight` (`0xffb066`, intensity 12, decay 2, casts shadows)
+  plus a small emissive bulb sphere, at OBJ `(−1.63, 7.05, 2.35)` m. Pressing
+  `Ctrl+S` again returns to day. The current mode is shown in the top-left help
+  panel ("ahora: día/noche").
+- All model meshes (walls, floor, ceilings, plinths, blocks) both `castShadow`
+  and `receiveShadow`; `normalBias`/`bias` keep the DoubleSide surfaces free of
+  shadow acne. `index.html` and `viewer.html` stay identical.
+
 ---
 
 ## 3. `floorplan_candidates/` — review artifacts
