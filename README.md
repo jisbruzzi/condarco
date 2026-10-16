@@ -75,7 +75,7 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
   (`clean_walls.js`, below) it is now **672 verts / 416 faces**; the plinth pass
   (`add_plinths.js`) then adds 56 wooden baseboards = 448 verts / 336 faces, and
   the openings pass (`add_openings.js`, below) carves the window/balcony holes,
-  leaving **1296 verts / 884 faces**. Extents
+  leaving **1272 verts / 866 faces**. Extents
   X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
@@ -136,8 +136,11 @@ numbers (`#N`, as shown by the Ctrl+D tool); metres in the OBJ frame.
 | `balcony_door` | N-S, x 1.491–1.704 | 30 cm from #834 to 16 cm from #1107 | 0 → 2.10 m |
 
 All windows share a **95 cm sill and 110 cm height**; the sliding balcony door
-runs floor → 210 cm. The pass is idempotent (re-running finds no overlap with
-the already-cut holes).
+runs floor → 210 cm. Window 3 also pierces the glazing layer and outer leaf of
+that wall. The pass is idempotent (re-running finds no overlap with the
+already-cut holes). Plinth collars overhang their wall by 1.5 cm, so the plinth
+voids are widened on the wall-thickness axis — otherwise a floating baseboard
+would run across the balcony doorway.
 
 The OBJ is Z-up in the file (`x` east, `y` north, `z` height); the browser
 viewer (`index.html`) rotates −90° about X for Three.js, so its HUD shows

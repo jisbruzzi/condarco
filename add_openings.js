@@ -143,10 +143,24 @@ function subtract(A, B) {
   return out;
 }
 
-function carve(boxes, label) {
+// Plinth collars stick out 1.5 cm beyond each wall face. A hole carved only to
+// the wall face leaves that overhang running across the opening (a floating
+// baseboard), so for the plinths we widen each void by PAD on its thin
+// (wall-thickness) axis to swallow the whole collar.
+const PAD = 0.02;
+
+function paddedVoid(v) {
+  const thinX = (v.x1 - v.x0) <= (v.y1 - v.y0);
+  return thinX
+    ? { ...v, x0: v.x0 - PAD, x1: v.x1 + PAD }
+    : { ...v, y0: v.y0 - PAD, y1: v.y1 + PAD };
+}
+
+function carve(boxes, label, pad) {
   let list = boxes;
   let removed = 0;
-  for (const v of OPENINGS) {
+  for (const raw of OPENINGS) {
+    const v = pad ? paddedVoid(raw) : raw;
     const next = [];
     for (const b of list) {
       const parts = subtract(b, v);
@@ -170,8 +184,8 @@ for (const v of OPENINGS) {
     (hit.length ? ' -> ' + hit.map((b) => `x${b.x0}..${b.x1} y${b.y0}..${b.y1}`).join(' | ') : ' (¡ninguna!)'));
 }
 
-const newWalls = carve(wallBoxes, 'walls');
-const newPlinths = carve(plinthBoxes, 'plinths');
+const newWalls = carve(wallBoxes, 'walls', false);
+const newPlinths = carve(plinthBoxes, 'plinths', true);
 
 // ---- rebuild ---------------------------------------------------------------
 const fmt = (n) => n.toFixed(4);
