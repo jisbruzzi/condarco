@@ -75,14 +75,14 @@ kitchen/bath/bed areas coarse-blocked per instruction, iterate later).
   (`clean_walls.js`, below) it is now **672 verts / 416 faces**; the plinth pass
   (`add_plinths.js`) then adds 56 wooden baseboards = 448 verts / 336 faces, and
   the openings pass (`add_openings.js`, below) carves the window/balcony holes,
-  leaving **1240 verts / 842 faces**. Extents
+  leaving **1296 verts / 884 faces**. Extents
   X [-6.30, 6.15], Y [-8.88, 8.87], Z [-0.05, 2.70].
 
 Groups:
 
 | Group | Faces | Contents | Height |
 |---|---|---|---|
-| `walls` | 408 (68 disjoint boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings are cut as holes (see the openings pass below). The boxes never overlap, so every plan corner is a real vertex the viewer can select. | 2.70 m |
+| `walls` | 450 (75 disjoint boxes) | All wall strips: exterior ~21 cm, interior ~14 cm, thin ~4 cm, balcony walls. Window/door openings are cut as holes (see the openings pass below). The boxes never overlap, so every plan corner is a real vertex the viewer can select. | 2.70 m |
 | `floor` | 6 (1 box) | Full footprint slab 12.45 m × 17.75 m | 0.05 m (z −0.05→0) |
 | `block_bed1` | 6 | Master bed placeholder, footprint 2.9 × 2.35 m | 0.55 m |
 | `block_bed2` | 6 | Lucas bed placeholder, 1.35 × 2.7 m | 0.55 m |
@@ -132,7 +132,7 @@ numbers (`#N`, as shown by the Ctrl+D tool); metres in the OBJ frame.
 |---|---|---|---|
 | `window1` entrance | N-S, x 0.831–1.044 | 38 cm from #282 (y −8.497), 140 cm wide | 0.95 → 2.05 m |
 | `window2` kitchen | E-W, y 5.272–5.485 | 74 cm west of #834 (x 1.719), 60 cm wide | 0.95 → 2.05 m |
-| `window3` living | E-W, y 8.498–8.601 | 72 cm east of #1107 to 28 cm short of #844 | 0.95 → 2.05 m |
+| `window3` living | E-W, y 8.498–8.711 (full wall assembly) | 72 cm east of #1107 to 28 cm short of #844 | 0.95 → 2.05 m |
 | `balcony_door` | N-S, x 1.491–1.704 | 30 cm from #834 to 16 cm from #1107 | 0 → 2.10 m |
 
 All windows share a **95 cm sill and 110 cm height**; the sliding balcony door

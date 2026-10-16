@@ -45,7 +45,9 @@ const OPENINGS = [
   // window 2 — kitchen, E-W wall (y 5.272..5.485). Corner v834 at x 1.7187, westward.
   { name: 'window2', x0: 1.7187 - 0.74 - 0.60, x1: 1.7187 - 0.74, y0: 5.272, y1: 5.4852, z0: SILL, z1: WIN_TOP },
   // window 3 — living-room band, E-W wall (y 8.498..8.601). From v1107 east, to 28 cm short of v844.
-  { name: 'window3', x0: 1.719 + 0.72, x1: 5.9263 - 0.28, y0: 8.498, y1: 8.6008, z0: SILL, z1: WIN_TOP },
+  // The y span covers the full exterior wall assembly here (inner leaf + glazing
+  // wall + outer leaf, up to y 8.7107) so the hole goes right through.
+  { name: 'window3', x0: 1.719 + 0.72, x1: 5.9263 - 0.28, y0: 8.498, y1: 8.7107, z0: SILL, z1: WIN_TOP },
   // sliding balcony door — N-S wall (x 1.491..1.704). From v834 (y 5.2572) to v1107 (y 8.5127).
   { name: 'balcony_door', x0: 1.491, x1: 1.704, y0: 5.2572 + 0.30, y1: 8.5127 - 0.16, z0: 0.0, z1: DOOR_H },
 ];
