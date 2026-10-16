@@ -347,6 +347,8 @@
         g.computeVertexNormals(); // caras planas correctamente iluminadas
         const mesh = new THREE.Mesh(g, materialFor(section.name));
         mesh.name = section.name;
+        // Zócalos ocultos mientras la herramienta de borrado (Ctrl+D) está activa.
+        if (section.name === 'plinths' && deleteTool.active) mesh.visible = false;
         modelGroup.add(mesh);
       }
       scene.add(modelGroup);
@@ -436,8 +438,16 @@
       updateDeletedUI('restaurado #' + (i + 1));
     }
 
+    function setPlinthsVisible(visible) {
+      if (!modelGroup) return;
+      modelGroup.traverse((c) => { if (c.isMesh && c.name === 'plinths') c.visible = visible; });
+    }
+
     function toggleDeleteTool() {
       deleteTool.active = !deleteTool.active;
+      // Al activar Ctrl+D, ocultamos los zócalos para no tapar los vértices del
+      // pie de las paredes; al salir, se vuelven a mostrar.
+      setPlinthsVisible(!deleteTool.active);
       if (deleteTool.active) {
         deletebar.classList.add('on');
         crosshair.classList.add('on');
