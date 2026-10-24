@@ -537,8 +537,10 @@
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         if (section.name === 'floor') g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-        g.computeVertexNormals(); // caras planas correctamente iluminadas
+        g.computeFlatVertexNormals();
         const mesh = new THREE.Mesh(g, materialFor(section.name));
+        mesh.material.flatShading = true;
+        mesh.material.needsUpdate = true;
         mesh.name = section.name;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
