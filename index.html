@@ -187,7 +187,7 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     app.appendChild(renderer.domElement);
@@ -295,15 +295,16 @@
     const sunLight = new THREE.DirectionalLight(0xfff3e0, 3.0);
     sunLight.position.copy(sunDirection).multiplyScalar(60);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.mapSize.set(4096, 4096);
     sunLight.shadow.camera.near = 1;
     sunLight.shadow.camera.far = 160;
     sunLight.shadow.camera.left = -22;
     sunLight.shadow.camera.right = 22;
     sunLight.shadow.camera.top = 22;
     sunLight.shadow.camera.bottom = -22;
-    sunLight.shadow.bias = -0.0004;
-    sunLight.shadow.normalBias = 0.03;
+    sunLight.shadow.bias = -0.0002;
+    sunLight.shadow.normalBias = 0.02;
+    sunLight.shadow.radius = 1;
     scene.add(sunLight);
     scene.add(sunLight.target);
 
