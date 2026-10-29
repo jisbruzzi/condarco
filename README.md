@@ -203,6 +203,24 @@ ceiling-height counterparts = **42 verts / 60 faces**, taking the model from
 [91, 90, 122, 123, 593, 594, 578, 17, 577, 58, 50, 51, 66, 67, 602, 554, 129, 546, 545, 562, 561]
 ```
 
+#### Measurement tool (viewer)
+
+`index.html` / `viewer.html` also ship a read-only measuring mode (**Ctrl+M**,
+mutually exclusive with Ctrl+D; plinths are hidden while it is active).
+
+1. **Pick the origin.** The vertex nearest the screen centre gets a cyan sphere.
+   **Left click** selects it (yellow sphere).
+2. **Measure.** A target sphere follows the point where the screen centre meets
+   the floor (y = 0). It is *sticky*: within 55 px of a vertex it snaps to it
+   (green); otherwise, within 35 px of a wall/floor junction (any non-plinth,
+   non-ceiling edge with both ends at OBJ z = 0) it snaps to the closest point on
+   that edge (orange); otherwise it is the free floor point (white). A line, a
+   floating label and the banner show the 3D distance plus Δx / Δy / Δz
+   (OBJ frame) and the horizontal distance.
+3. **Right click**, **Backspace** or **Ctrl+Z** returns to step 1;
+   **Ctrl+M** exits. Snap radii are the `SNAP_VERTEX_PX` / `SNAP_EDGE_PX`
+   constants in the viewer script.
+
 #### Wall-overlap cleanup + `clean_walls.js`
 
 The strips were emitted one box each and overlapped heavily (junction

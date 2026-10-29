@@ -84,6 +84,51 @@
     #deletebar .dim { color: #e8a9dc; }
     #deletebar .ok { color: #7dffb0; }
 
+    /* Mira cian para el modo medir (Ctrl+M). */
+    #crosshair.measure::before,
+    #crosshair.measure::after { background: rgba(0, 229, 255, 0.9); }
+
+    /* Barra superior del modo medir (Ctrl+M). */
+    #measurebar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: 92vw;
+      padding: 10px 16px;
+      background: rgba(0, 22, 28, 0.84);
+      border: 1px solid rgba(0, 229, 255, 0.6);
+      border-radius: 10px;
+      color: #d2f8ff;
+      font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-align: center;
+      white-space: pre-line;
+      pointer-events: none;
+      z-index: 50;
+      display: none;
+    }
+    #measurebar.on { display: block; }
+    #measurebar .title { color: #00e5ff; font-weight: 700; letter-spacing: 0.04em; }
+    #measurebar .dim { color: #8fd3df; }
+    #measurebar .big { color: #ffd400; font-size: 18px; font-weight: 700; }
+
+    /* Etiqueta flotante con la distancia, sobre el punto medio de la línea. */
+    #measurelabel {
+      position: fixed;
+      left: 0;
+      top: 0;
+      padding: 3px 9px;
+      background: rgba(0, 22, 28, 0.88);
+      border: 1px solid rgba(255, 212, 0, 0.8);
+      border-radius: 999px;
+      color: #ffd400;
+      font: 700 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 40;
+      display: none;
+    }
+
     #overlay {
       position: fixed;
       inset: 0;
@@ -120,7 +165,7 @@
   <div id="help">
     <b>WASD</b> moverse &nbsp;·&nbsp; <b>Mouse</b> mirar &nbsp;·&nbsp; <b>Shift</b> correr &nbsp;·&nbsp; <b>Esc</b> liberar cursor<br />
     <b>Ctrl+D</b> eliminar vértices &nbsp;·&nbsp; <b>Ctrl+Z</b> deshacer &nbsp;·&nbsp; <b>Ctrl+C</b> copiar lista<br />
-    <b>Ctrl+S</b> cambiar día/noche &nbsp;·&nbsp; ahora: <b id="time">día</b>
+    <b>Ctrl+M</b> medir distancias &nbsp;·&nbsp; <b>Ctrl+S</b> cambiar día/noche &nbsp;·&nbsp; ahora: <b id="time">día</b>
   </div>
 
   <div id="hud"></div>
@@ -134,11 +179,21 @@
     <div class="dim">Eliminados: <span id="dcount">0</span> &nbsp;<span class="ok" id="dstatus"></span></div>
   </div>
 
+  <div id="measurebar">
+    <div class="title">MODO MEDIR · Ctrl+M para salir</div>
+    <div id="mstep">—</div>
+    <div class="big" id="mdist"></div>
+    <div class="dim" id="mdetail"></div>
+    <div class="dim" id="mhelp"></div>
+  </div>
+  <div id="measurelabel"></div>
+
   <div id="overlay">
     <h1>Recorrido de la casa</h1>
     <p id="loading">Cargando floorplan.obj…</p>
     <p>WASD para caminar, mouse para mirar.</p>
     <p style="font-size:12px">Ctrl+D activa la herramienta para eliminar vértices del modelo.</p>
+    <p style="font-size:12px">Ctrl+M activa la herramienta para medir distancias entre vértices y el piso.</p>
     <div class="btn" id="startBtn">Haz clic para entrar</div>
   </div>
 
@@ -182,6 +237,12 @@
     const dcount = document.getElementById('dcount');
     const dstatus = document.getElementById('dstatus');
     const timeEl = document.getElementById('time');
+    const measurebar = document.getElementById('measurebar');
+    const measurelabel = document.getElementById('measurelabel');
+    const mstep = document.getElementById('mstep');
+    const mdist = document.getElementById('mdist');
+    const mdetail = document.getElementById('mdetail');
+    const mhelp = document.getElementById('mhelp');
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -412,15 +473,73 @@
     marker.visible = false;
     scene.add(marker);
 
+    // ---------------------------------------------------------------------
+    // Herramienta "medir" (Ctrl+M).
+    //  1) Sin selección: se resalta (esfera cian) el vértice más cercano al
+    //     centro de la pantalla; el clic izquierdo lo selecciona (esfera amarilla).
+    //  2) Con selección: una esfera "pegajosa" sigue el punto donde el centro de
+    //     la pantalla corta el piso. Se imanta a vértices y a las uniones
+    //     pared-piso si están cerca (en píxeles) del centro. Se dibuja una línea
+    //     y la distancia entre ambos puntos.
+    // ---------------------------------------------------------------------
+    const SNAP_VERTEX_PX = 55;   // radio de imán a vértices (píxeles desde el centro)
+    const SNAP_EDGE_PX = 35;     // radio de imán a uniones pared-piso
+    const FLOOR_EPS = 1e-4;      // |z OBJ| menor a esto = vértice a nivel del piso
+    const NEAR_CLIP = 0.05;
+    const MAX_FLOOR_DIST = 100;  // m; más lejos que esto no se mide
+
+    const TARGET_COLORS = { vertex: 0x2ee27a, edge: 0xff9d2e, floor: 0xffffff };
+
+    const measureTool = {
+      active: false,
+      selected: -1,                          // índice OBJ del vértice de origen
+      selectedWorld: new THREE.Vector3(),
+      hover: -1,                             // vértice resaltado antes de seleccionar
+      hoverWorld: new THREE.Vector3(),
+      target: new THREE.Vector3(),           // punto de destino (mundo)
+      targetKind: 'none',                    // 'vertex' | 'edge' | 'floor' | 'none'
+      targetVertex: -1,
+      data: null,                            // caché: vértices y aristas pared-piso (mundo)
+      cache: { step: '', dist: '', detail: '', help: '' }
+    };
+
+    function makeMeasureSphere(color, radius) {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 16, 16),
+        new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 })
+      );
+      m.renderOrder = 999;
+      m.visible = false;
+      scene.add(m);
+      return m;
+    }
+    const hoverMarker = makeMeasureSphere(0x00e5ff, 0.08);
+    const selectedMarker = makeMeasureSphere(0xffd400, 0.09);
+    const targetMarker = makeMeasureSphere(TARGET_COLORS.floor, 0.07);
+
+    // Línea de medición: cilindro fino de altura 1 que se escala/orienta cada frame.
+    const measureLine = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 1, 8, 1),
+      new THREE.MeshBasicMaterial({ color: 0xffd400, depthTest: false, transparent: true, opacity: 0.9 })
+    );
+    measureLine.renderOrder = 998;
+    measureLine.visible = false;
+    scene.add(measureLine);
+
     const keys = Object.create(null);
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey) {
         if (e.code === 'KeyD') { e.preventDefault(); toggleDeleteTool(); }
-        else if (e.code === 'KeyZ') { e.preventDefault(); undoDelete(); }
+        else if (e.code === 'KeyM') { e.preventDefault(); toggleMeasureTool(); }
+        else if (e.code === 'KeyZ') {
+          e.preventDefault();
+          if (measureTool.active) measureDeselect(); else undoDelete();
+        }
         else if (e.code === 'KeyC') { e.preventDefault(); copyDeleteList(); }
         else if (e.code === 'KeyS') { e.preventDefault(); setTimeOfDay(!isNight); }
         return; // no tratar como tecla de movimiento
       }
+      if (e.code === 'Backspace' && measureTool.active) { e.preventDefault(); measureDeselect(); return; }
       keys[e.code] = true;
       if (e.code === 'Space') e.preventDefault();
     });
@@ -442,7 +561,14 @@
       if (deleteTool.active && controls.isLocked && e.button === 0) {
         e.preventDefault();
         deleteCurrentVertex();
+      } else if (measureTool.active && controls.isLocked) {
+        if (e.button === 0) { e.preventDefault(); measureSelect(); }
+        else if (e.button === 2) { e.preventDefault(); measureDeselect(); }
       }
+    });
+    // Clic derecho = volver a elegir el vértice de origen (sin menú contextual).
+    renderer.domElement.addEventListener('contextmenu', (e) => {
+      if (measureTool.active) e.preventDefault();
     });
 
     camera.position.set(0, EYE_HEIGHT, 0);
@@ -543,12 +669,13 @@
         mesh.name = section.name;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        // Zócalos ocultos mientras la herramienta de borrado (Ctrl+D) está activa.
-        if (section.name === 'plinths' && deleteTool.active) mesh.visible = false;
+        // Zócalos ocultos mientras la herramienta de borrado (Ctrl+D) o la de medir (Ctrl+M) está activa.
+        if (section.name === 'plinths' && plinthsHidden()) mesh.visible = false;
         modelGroup.add(mesh);
       }
       scene.add(modelGroup);
       modelGroup.updateMatrixWorld(true);
+      measureTool.data = null; // la geometría cambió: recalcular vértices/aristas de medición
     }
 
     // Vértices aún usados por alguna cara viva (los demás ya no se pueden tocar).
@@ -639,11 +766,16 @@
       modelGroup.traverse((c) => { if (c.isMesh && c.name === 'plinths') c.visible = visible; });
     }
 
+    function plinthsHidden() {
+      return deleteTool.active || measureTool.active;
+    }
+
     function toggleDeleteTool() {
+      if (!deleteTool.active && measureTool.active) setMeasureActive(false); // herramientas excluyentes
       deleteTool.active = !deleteTool.active;
       // Al activar Ctrl+D, ocultamos los zócalos para no tapar los vértices del
       // pie de las paredes; al salir, se vuelven a mostrar.
-      setPlinthsVisible(!deleteTool.active);
+      setPlinthsVisible(!plinthsHidden());
       if (deleteTool.active) {
         deletebar.classList.add('on');
         crosshair.classList.add('on');
@@ -712,6 +844,283 @@
       }
     }
 
+    // ---------------------------------------------------------------------
+    // Herramienta medir (Ctrl+M): lógica.
+    // ---------------------------------------------------------------------
+
+    // Vértices visibles (sin zócalos, que están ocultos) y aristas de la unión
+    // pared-piso (aristas con ambos extremos a z OBJ = 0), en coordenadas de mundo.
+    function getMeasureData() {
+      if (measureTool.data) return measureTool.data;
+      const deletedSet = new Set(deleteTool.deleted);
+      const worldOf = (i) => {
+        const o = model.vertices[i];
+        return new THREE.Vector3(o[0], o[1], o[2]).applyMatrix4(modelGroup.matrixWorld);
+      };
+      const atFloor = (i) => Math.abs(model.vertices[i][2]) < FLOOR_EPS;
+
+      const used = new Set();
+      const edgeKeys = new Set();
+      const edges = [];
+      for (const section of model.sections) {
+        if (section.name === 'plinths') continue;
+        const wantEdges = section.name !== 'ceilings';
+        for (const face of section.faces) {
+          if (face.some((i) => deletedSet.has(i))) continue;
+          for (let k = 0; k < face.length; k++) {
+            const a = face[k];
+            const b = face[(k + 1) % face.length];
+            used.add(a);
+            if (!wantEdges || !atFloor(a) || !atFloor(b)) continue;
+            const key = a < b ? a + '_' + b : b + '_' + a;
+            if (edgeKeys.has(key)) continue;
+            edgeKeys.add(key);
+            edges.push({ a: worldOf(a), b: worldOf(b) });
+          }
+        }
+      }
+      const verts = [];
+      for (const i of used) verts.push({ index: i, world: worldOf(i) });
+      measureTool.data = { verts, edges };
+      return measureTool.data;
+    }
+
+    const _ea = new THREE.Vector3();
+    const _eb = new THREE.Vector3();
+    const _pa = new THREE.Vector3();
+    const _pb = new THREE.Vector3();
+    const _q = new THREE.Vector3();
+    const _dir = new THREE.Vector3();
+    const _mid = new THREE.Vector3();
+    const _up = new THREE.Vector3(0, 1, 0);
+
+    // Punto más cercano (en pantalla) al centro sobre las aristas pared-piso.
+    // Devuelve { d2, point } con d2 = distancia² en píxeles al centro de la pantalla.
+    function nearestEdgePoint(edges, halfW, halfH) {
+      let bestD2 = Infinity;
+      let found = false;
+      for (const e of edges) {
+        _ea.copy(e.a).applyMatrix4(camera.matrixWorldInverse);
+        _eb.copy(e.b).applyMatrix4(camera.matrixWorldInverse);
+        if (_ea.z > -NEAR_CLIP && _eb.z > -NEAR_CLIP) continue;           // detrás de la cámara
+        if (_ea.z > -NEAR_CLIP) _ea.lerp(_eb, (-NEAR_CLIP - _ea.z) / (_eb.z - _ea.z));
+        else if (_eb.z > -NEAR_CLIP) _eb.lerp(_ea, (-NEAR_CLIP - _eb.z) / (_ea.z - _eb.z));
+
+        _pa.copy(_ea).applyMatrix4(camera.projectionMatrix);
+        _pb.copy(_eb).applyMatrix4(camera.projectionMatrix);
+        const ax = _pa.x * halfW, ay = _pa.y * halfH;
+        const ex = _pb.x * halfW - ax, ey = _pb.y * halfH - ay;
+        const len2 = ex * ex + ey * ey;
+        let s = len2 > 1e-9 ? -(ax * ex + ay * ey) / len2 : 0;
+        s = Math.max(0, Math.min(1, s));
+        const cx = ax + ex * s, cy = ay + ey * s;
+        const d2 = cx * cx + cy * cy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          found = true;
+          // Parámetro en pantalla (s) -> parámetro 3D (t), corrigiendo la perspectiva.
+          const wA = -_ea.z, wB = -_eb.z;
+          const t = s * wA / (s * wA + (1 - s) * wB);
+          _q.copy(_ea).lerp(_eb, t).applyMatrix4(camera.matrixWorld);
+        }
+      }
+      return found ? { d2: bestD2, point: _q } : null;
+    }
+
+    function hideMeasureVisuals() {
+      hoverMarker.visible = false;
+      selectedMarker.visible = false;
+      targetMarker.visible = false;
+      measureLine.visible = false;
+      measurelabel.style.display = 'none';
+    }
+
+    function setMeasureText(key, el, value) {
+      if (measureTool.cache[key] === value) return;
+      measureTool.cache[key] = value;
+      el.textContent = value;
+    }
+
+    function fmtObj(v) {
+      return '(' + v[0].toFixed(3) + ', ' + v[1].toFixed(3) + ', ' + v[2].toFixed(3) + ')';
+    }
+
+    function updateMeasure() {
+      if (!measureTool.active || !modelGroup || !model) { hideMeasureVisuals(); return; }
+      camera.updateMatrixWorld();
+      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+
+      const data = getMeasureData();
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+
+      // Vértice más cercano al centro de la pantalla (dentro del frustum).
+      let bestV = null;
+      let bestD2 = Infinity;
+      for (const v of data.verts) {
+        _c.copy(v.world).applyMatrix4(camera.matrixWorldInverse);
+        if (_c.z > -NEAR_CLIP) continue;
+        _p.copy(_c).applyMatrix4(camera.projectionMatrix);
+        if (_p.x < -1 || _p.x > 1 || _p.y < -1 || _p.y > 1) continue;
+        const dx = _p.x * halfW, dy = _p.y * halfH;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; bestV = v; }
+      }
+
+      // ---- Fase 1: elegir el vértice de origen.
+      if (measureTool.selected < 0) {
+        targetMarker.visible = false;
+        selectedMarker.visible = false;
+        measureLine.visible = false;
+        measurelabel.style.display = 'none';
+        measureTool.targetKind = 'none';
+        if (bestV) {
+          measureTool.hover = bestV.index;
+          measureTool.hoverWorld.copy(bestV.world);
+          hoverMarker.position.copy(bestV.world);
+          hoverMarker.visible = true;
+          setMeasureText('step', mstep, 'Paso 1/2 · Vértice más cercano al centro: #' +
+            (bestV.index + 1) + '  obj' + fmtObj(model.vertices[bestV.index]));
+        } else {
+          measureTool.hover = -1;
+          hoverMarker.visible = false;
+          setMeasureText('step', mstep, 'Paso 1/2 · Vértice más cercano al centro: — (ninguno a la vista)');
+        }
+        setMeasureText('dist', mdist, '');
+        setMeasureText('detail', mdetail, 'coords = OBJ (x este · y norte · z alto), metros');
+        setMeasureText('help', mhelp, 'Clic izq. selecciona el vértice de origen');
+        return;
+      }
+
+      // ---- Fase 2: medir desde el vértice seleccionado hasta el punto pegajoso.
+      hoverMarker.visible = false;
+      measureTool.hover = -1;
+      selectedMarker.position.copy(measureTool.selectedWorld);
+      selectedMarker.visible = true;
+
+      let kind = 'none';
+      let targetVertex = -1;
+      if (bestV && bestD2 <= SNAP_VERTEX_PX * SNAP_VERTEX_PX) {
+        // Imán a vértice (máxima prioridad).
+        kind = 'vertex';
+        targetVertex = bestV.index;
+        measureTool.target.copy(bestV.world);
+      } else {
+        const edge = nearestEdgePoint(data.edges, halfW, halfH);
+        if (edge && edge.d2 <= SNAP_EDGE_PX * SNAP_EDGE_PX) {
+          // Imán a la unión pared-piso.
+          kind = 'edge';
+          measureTool.target.copy(edge.point);
+        } else {
+          // Intersección libre del centro de la pantalla con el piso (y = 0).
+          camera.getWorldDirection(_dir);
+          if (_dir.y < -1e-4) {
+            const t = -camera.position.y / _dir.y;
+            if (t > 0 && t < MAX_FLOOR_DIST) {
+              kind = 'floor';
+              measureTool.target.copy(camera.position).addScaledVector(_dir, t);
+              measureTool.target.y = 0;
+            }
+          }
+        }
+      }
+      measureTool.targetKind = kind;
+      measureTool.targetVertex = targetVertex;
+
+      const o = model.vertices[measureTool.selected];
+      const stepText = 'Origen: #' + (measureTool.selected + 1) + '  obj' + fmtObj(o);
+      if (kind === 'none') {
+        targetMarker.visible = false;
+        measureLine.visible = false;
+        measurelabel.style.display = 'none';
+        setMeasureText('step', mstep, stepText + '\nDestino: — (mirá hacia el piso)');
+        setMeasureText('dist', mdist, '');
+        setMeasureText('detail', mdetail, '');
+      } else {
+        targetMarker.material.color.setHex(TARGET_COLORS[kind]);
+        targetMarker.position.copy(measureTool.target);
+        targetMarker.visible = true;
+
+        // Línea origen -> destino.
+        const a = measureTool.selectedWorld, b = measureTool.target;
+        _dir.subVectors(b, a);
+        const dist = _dir.length();
+        if (dist > 1e-6) {
+          measureLine.position.copy(a).addScaledVector(_dir, 0.5);
+          measureLine.quaternion.setFromUnitVectors(_up, _dir.clone().normalize());
+          measureLine.scale.set(1, dist, 1);
+          measureLine.visible = true;
+        } else {
+          measureLine.visible = false;
+        }
+
+        // Componentes en el marco OBJ: x = X, y = -Z, z = Y (mundo).
+        const dx = b.x - a.x, dy = -(b.z - a.z), dz = b.y - a.y;
+        const horiz = Math.hypot(dx, dy);
+        const kindText = kind === 'vertex' ? 'vértice #' + (targetVertex + 1)
+          : kind === 'edge' ? 'unión pared-piso' : 'piso';
+        setMeasureText('step', mstep, stepText + '\nDestino: ' + kindText);
+        const distText = dist.toFixed(3) + ' m  (' + (dist * 100).toFixed(1) + ' cm)';
+        setMeasureText('dist', mdist, distText);
+        setMeasureText('detail', mdetail,
+          'Δx ' + dx.toFixed(3) + ' · Δy ' + dy.toFixed(3) + ' · Δz ' + dz.toFixed(3) +
+          ' · horizontal ' + horiz.toFixed(3) + ' m');
+
+        // Etiqueta flotante en el punto medio.
+        _mid.copy(a).addScaledVector(_dir, 0.5);
+        _c.copy(_mid).applyMatrix4(camera.matrixWorldInverse);
+        if (_c.z < -NEAR_CLIP) {
+          _p.copy(_c).applyMatrix4(camera.projectionMatrix);
+          const sx = (_p.x * 0.5 + 0.5) * window.innerWidth;
+          const sy = (-_p.y * 0.5 + 0.5) * window.innerHeight;
+          measurelabel.textContent = dist.toFixed(3) + ' m';
+          measurelabel.style.transform =
+            'translate(' + sx.toFixed(1) + 'px,' + sy.toFixed(1) + 'px) translate(-50%, -150%)';
+          measurelabel.style.display = 'block';
+        } else {
+          measurelabel.style.display = 'none';
+        }
+      }
+      setMeasureText('help', mhelp,
+        'Esfera blanca = piso · naranja = unión pared-piso · verde = vértice\n' +
+        'Clic der. / Backspace / Ctrl+Z: elegir otro vértice de origen');
+    }
+
+    function measureSelect() {
+      if (measureTool.selected >= 0 || measureTool.hover < 0) return;
+      measureTool.selected = measureTool.hover;
+      measureTool.selectedWorld.copy(measureTool.hoverWorld);
+    }
+
+    function measureDeselect() {
+      if (measureTool.selected < 0) return;
+      measureTool.selected = -1;
+      measureTool.targetKind = 'none';
+    }
+
+    function setMeasureActive(on) {
+      measureTool.active = on;
+      measureTool.selected = -1;
+      measureTool.hover = -1;
+      measureTool.targetKind = 'none';
+      measureTool.cache.step = measureTool.cache.dist = measureTool.cache.detail = measureTool.cache.help = '\0';
+      setPlinthsVisible(!plinthsHidden());
+      if (on) {
+        measurebar.classList.add('on');
+        crosshair.classList.add('on', 'measure');
+        if (!controls.isLocked) controls.lock();
+      } else {
+        measurebar.classList.remove('on');
+        crosshair.classList.remove('on', 'measure');
+        hideMeasureVisuals();
+      }
+    }
+
+    function toggleMeasureTool() {
+      if (!measureTool.active && deleteTool.active) toggleDeleteTool(); // herramientas excluyentes
+      setMeasureActive(!measureTool.active);
+    }
+
     fetch('floorplan.obj')
       .then((res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -760,6 +1169,7 @@
       }
 
       if (deleteTool.active) updateHighlight();
+      if (measureTool.active) updateMeasure();
 
       const p = camera.position;
       camera.getWorldDirection(forward);
@@ -769,7 +1179,8 @@
         'Y: <b>' + p.y.toFixed(3) + '</b>  m  (altura)\n' +
         'Z: <b>' + p.z.toFixed(3) + '</b>  m\n' +
         'rumbo: <b>' + yaw.toFixed(1) + '</b>°' +
-        (deleteTool.active ? '\nmodo: <b>eliminar vértices</b>' : '');
+        (deleteTool.active ? '\nmodo: <b>eliminar vértices</b>' : '') +
+        (measureTool.active ? '\nmodo: <b>medir</b>' : '');
 
       renderer.render(scene, camera);
     }
